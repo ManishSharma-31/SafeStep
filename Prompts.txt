@@ -1,0 +1,15 @@
+1. "Create a Go-based durable execution engine with step memoization and crash recovery"
+
+2. "Implement a generic Step function in Go that supports any return type using generics"
+
+3. "Design a SQLite persistence layer for storing workflow steps with status tracking"
+
+4. "Implement sequence ID generation using atomic counters for loop and conditional support"
+
+5. "Create an employee onboarding workflow with sequential and parallel steps"
+
+6. "Add thread-safe concurrent step execution using errgroup and mutex protection"
+
+7. "Implement crash simulation and recovery testing for durable workflows"
+
+8. "Design zombie step detection and recovery mechanism for interrupted executions"
