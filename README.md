@@ -98,3 +98,14 @@ durable-execution-engine/
 4. **JSON Serialization**: Standard library encoding/json for step results
 5. **Error Handling**: Proper error propagation and step failure recording
 6. **Idempotency**: Completed steps return cached results on replay
+
+
+---
+
+## 👤 Author
+
+**Manish Sharma**
+- GitHub: [@MrMKsharma](https://github.com/MrMKsharma)
+- Email: manishsharmadota@gmail.com
+
+---
