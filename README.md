@@ -235,6 +235,11 @@ This project works well for local durable workflow execution, but it is not yet 
 ## Author
 
 **Manish Sharma**
+<<<<<<< HEAD
+=======
+- LinkedIn: [manishsharma31](https://www.linkedin.com/in/manishsharma31/)
+- Email: manishsharmadota@gmail.com
+>>>>>>> fa3dcb8d49a0fb32ef2105f9a618a34aa58010d6
 
-- LinkedIn: [manishsharma31](https://www.linkedin.com/in/manishsharma31)
+- LinkedIn: [manishsharma31](https://www.linkedin.com/in/manishsharma31/)
 - Email: `manishsharmadota@gmail.com`
