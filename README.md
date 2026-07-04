@@ -1,111 +1,240 @@
 # Durable Execution Engine
 
-A native Go implementation of a durable execution engine that provides crash-resilience and automatic memoization for workflow-based applications.
+A Go-based durable workflow engine that provides crash recovery, step memoization, and replay-safe execution for multi-step business processes.
 
 ## Features
 
 - Automatic step memoization
 - Crash recovery and resume
-- Parallel execution support (goroutines + errgroup)
-- Type-safe generics for step results
-- SQLite persistence layer
-- Thread-safe concurrent operations
-- Zombie step handling
+- Parallel step execution with `errgroup`
+- Generic `Step[T any]` API
+- SQLite-backed persistence
+- Thread-safe step key generation
+- Zombie `RUNNING` step recovery
+- Replay-safe behavior for parallel workflows
 
 ## How It Works
 
-### Sequence Tracking
-The engine tracks invocation counts per step ID to generate deterministic sequence suffixes. This ensures that:
-- Steps in loops are uniquely identified
-- Conditional branches don't cause conflicts
-- Parallel steps replay correctly even if goroutine scheduling differs across runs
+Each workflow runs with a durable `Context`. Every call to `Step(...)`:
 
-Step keys format: `<step_id>#<sequence_number>`
+1. Builds a deterministic step key
+2. Checks SQLite for a cached completed result
+3. Replays the cached result if it already exists
+4. Marks the step as `RUNNING` before execution
+5. Stores the result as `COMPLETED` after success
 
-### Thread Safety
-Parallel execution is safe through:
-1. Mutex-protected per-step sequence tracking
-2. Mutex-protected database operations
-3. Transaction-based state updates
+If the process crashes after a step starts but before it completes, that step remains `RUNNING`. On the next run, the engine detects it and re-executes it.
 
-## Running the Demo
+## Step Keys and Replay
+
+Step keys use this format:
+
+```text
+<step_id>#<sequence_number>
+```
+
+Sequence numbers are tracked per `stepID`, not globally. That matters because:
+
+- Repeated steps in loops get unique keys
+- Conditional branches stay stable across reruns
+- Parallel goroutines can replay safely even if scheduling order changes
+
+Example:
+
+```text
+create_employee#1
+provision_laptop#1
+provision_access#1
+send_welcome_email#1
+```
+
+## Project Structure
+
+```text
+SafeStep/
+|-- main.go
+|-- go.mod
+|-- go.sum
+|-- README.md
+|-- Prompts.txt
+|-- engine/
+|   |-- context.go
+|   |-- persistence.go
+|   |-- step.go
+|   `-- workflow.go
+|-- examples/
+|   `-- onboarding/
+|       `-- workflow.go
+`-- tests/
+    |-- engine_test.go
+    `-- onboarding_test.go
+```
+
+## Core Components
+
+- `engine/context.go`
+  Handles workflow-scoped state and deterministic per-step sequencing.
+
+- `engine/step.go`
+  Implements the generic durable step primitive with memoization and replay.
+
+- `engine/persistence.go`
+  Stores workflow and step state in SQLite.
+
+- `engine/workflow.go`
+  Runs a workflow function with a durable context.
+
+- `examples/onboarding/workflow.go`
+  Demo workflow showing sequential and parallel steps plus reusable step helpers.
+
+## Running the Project
+
+From the project root:
 
 ```bash
-# Install dependencies
 go mod download
+go run .
+```
 
-# Run normally
-go run main.go
+The CLI provides these options:
 
-# Run tests
-go test ./tests/... -v
+1. Run workflow normally
+2. Simulate crash after Step 1
+3. Simulate crash after parallel steps
+4. Reset workflow database
+
+The demo uses `workflows.db` in the project root.
+
+## Running Tests
+
+Run all tests:
+
+```bash
+go test ./... -v
+```
+
+Run a clean test pass without cache:
+
+```bash
+go test ./... -count=1 -timeout 3m -v
+```
+
+Run static checks:
+
+```bash
+go vet ./...
+```
+
+Optional race check:
+
+```bash
+go test ./... -race -v
 ```
 
 ## Crash Recovery Demo
 
-1. Choose option 2 or 3 to simulate a crash
-2. Run the program again
-3. Observe that completed steps are skipped
-4. Workflow resumes from the point of failure
+To verify durability manually:
 
-## Architecture
+1. Run `go run .`
+2. Choose `4` to reset the database
+3. Run `go run .` again
+4. Choose `3` to simulate a crash after the parallel steps
+5. Run `go run .` again
+6. Choose `1` to resume normally
 
-- `engine/context.go` - Durable context with sequence tracking
-- `engine/step.go` - Generic step primitive with memoization
-- `engine/persistence.go` - SQLite storage layer
-- `engine/workflow.go` - Workflow runner orchestrator
-- `examples/onboarding/` - Employee onboarding demo workflow
+Expected behavior:
 
-## Design Decisions
+- `create_employee`, `provision_laptop`, and `provision_access` replay from cache
+- Only `send_welcome_email` executes on the final run
 
-### Zombie Step Problem
-If a crash occurs between step execution and database commit, the step is marked as RUNNING. On restart:
-- The engine detects the RUNNING status
-- Re-executes the step (at-least-once semantics)
-- Updates status to COMPLETED on success
+## Test Coverage
+
+Current automated coverage includes:
+
+- Step memoization across reruns
+- Sequence tracking for repeated loop steps
+- Step failure propagation
+- Resume after partial workflow completion
+- Replay correctness when parallel scheduling changes
+- Zombie `RUNNING` step recovery
+- Retry after JSON serialization failure
+- Repeated use of the same `stepID` in parallel
+- Invalid database path handling
+- End-to-end onboarding workflow execution
+
+## Current Design Notes
+
+### Zombie Step Recovery
+
+If a crash happens after `SaveStepStart(...)` but before `SaveStepComplete(...)`, the step remains `RUNNING`. On replay, the engine treats that as an interrupted step and executes it again.
+
+This gives at-least-once semantics for interrupted steps, so step functions should be idempotent when they perform external side effects.
 
 ### Concurrency Model
-- errgroup for parallel step coordination
-- Mutex-protected DB writes prevent race conditions
-- Atomic sequence counter ensures deterministic replay
 
-## Project Structure
+- Per-step sequence counters are protected by a mutex
+- SQLite writes are protected by a mutex
+- Parallel workflow branches are coordinated with `errgroup`
 
+### Persistence Model
+
+Each step record stores:
+
+- `workflow_id`
+- `step_key`
+- `status`
+- `output`
+
+Statuses used by the engine:
+
+- `RUNNING`
+- `COMPLETED`
+- `FAILED`
+
+## Example Integration Pattern
+
+This engine is a good fit for real product workflows such as onboarding, billing setup, provisioning, notifications, and webhook handling.
+
+Example:
+
+```go
+runner, err := engine.NewWorkflowRunner("./workflows.db")
+if err != nil {
+    return err
+}
+defer runner.Close()
+
+err = runner.Run("signup-user-123", func(ctx *engine.Context) error {
+    _, err := engine.Step(ctx, "create_user", func() (string, error) {
+        return "user-created", nil
+    })
+    if err != nil {
+        return err
+    }
+
+    _, err = engine.Step(ctx, "send_email", func() (string, error) {
+        return "email-sent", nil
+    })
+    return err
+})
 ```
-durable-execution-engine/
-├── main.go                    # CLI entry point
-├── go.mod                     # Go module definition
-├── README.md                  # Project documentation
-├── Prompts.txt               # AI prompts used
-├── engine/
-│   ├── context.go            # Durable Context implementation
-│   ├── step.go               # Step primitive with generics
-│   ├── persistence.go        # SQLite database layer
-│   └── workflow.go           # Workflow runner
-├── examples/
-│   └── onboarding/
-│       └── workflow.go       # Employee onboarding example
-└── tests/
-    ├── engine_test.go        # Core engine tests
-    └── onboarding_test.go    # Workflow integration tests
-```
 
-## Key Implementation Notes
+## Limitations
 
-1. **Deterministic Step Sequencing**: Tracks invocation counts per step ID for replay-safe key generation
-2. **Mutex Protection**: Database operations are protected with `sync.Mutex`
-3. **Generic Step Function**: `Step[T any]()` supports any return type
-4. **JSON Serialization**: Standard library encoding/json for step results
-5. **Error Handling**: Proper error propagation and step failure recording
-6. **Idempotency**: Completed steps return cached results on replay
+This project works well for local durable workflow execution, but it is not yet a full production orchestration system. It does not yet include:
 
+- Built-in retries with backoff
+- Workflow input persistence
+- Timeout or cancellation handling
+- Multi-process worker coordination
+- Schema migrations
+- Dead-letter queues
+- Observability or admin tooling
+- PostgreSQL/MySQL backends
 
----
-
-## 👤 Author
+## Author
 
 **Manish Sharma**
-- GitHub: [@MrMKsharma](https://github.com/MrMKsharma)
-- Email: manishsharmadota@gmail.com
 
----
+- GitHub: [@MrMKsharma](https://github.com/MrMKsharma)
+- Email: `manishsharmadota@gmail.com`
