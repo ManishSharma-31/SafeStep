@@ -236,5 +236,5 @@ This project works well for local durable workflow execution, but it is not yet 
 
 **Manish Sharma**
 
-- GitHub: [@MrMKsharma](https://github.com/MrMKsharma)
+- LinkedIn: [manishsharma31](https://www.linkedin.com/in/manishsharma31)
 - Email: `manishsharmadota@gmail.com`
