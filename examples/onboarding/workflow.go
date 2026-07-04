@@ -15,9 +15,9 @@ type Employee struct {
 	Email string
 }
 
-func EmployeeOnboardingWorkflow(ctx *engine.Context) error {
-	employee, err := engine.Step(ctx, "create_employee", func() (Employee, error) {
-		fmt.Println("  📝 Creating employee record in database...")
+func CreateEmployeeStep(ctx *engine.Context) (Employee, error) {
+	return engine.Step(ctx, "create_employee", func() (Employee, error) {
+		fmt.Println("  Creating employee record in database...")
 		time.Sleep(1 * time.Second)
 		return Employee{
 			ID:    "EMP-001",
@@ -25,6 +25,34 @@ func EmployeeOnboardingWorkflow(ctx *engine.Context) error {
 			Email: "manish.sharma@zeotap.com",
 		}, nil
 	})
+}
+
+func ProvisionLaptopStep(ctx *engine.Context) (string, error) {
+	return engine.Step(ctx, "provision_laptop", func() (string, error) {
+		fmt.Println("  Provisioning laptop...")
+		time.Sleep(2 * time.Second)
+		return "MacBook Pro 16\" - Serial: MB12345", nil
+	})
+}
+
+func ProvisionAccessStep(ctx *engine.Context) (string, error) {
+	return engine.Step(ctx, "provision_access", func() (string, error) {
+		fmt.Println("  Provisioning system access...")
+		time.Sleep(2 * time.Second)
+		return "Access granted: Email, Slack, GitHub, AWS", nil
+	})
+}
+
+func SendWelcomeEmailStep(ctx *engine.Context, employee Employee) (string, error) {
+	return engine.Step(ctx, "send_welcome_email", func() (string, error) {
+		fmt.Println("  Sending welcome email...")
+		time.Sleep(1 * time.Second)
+		return fmt.Sprintf("Welcome email sent to %s", employee.Email), nil
+	})
+}
+
+func EmployeeOnboardingWorkflow(ctx *engine.Context) error {
+	employee, err := CreateEmployeeStep(ctx)
 	if err != nil {
 		return err
 	}
@@ -35,22 +63,14 @@ func EmployeeOnboardingWorkflow(ctx *engine.Context) error {
 	var laptop string
 	g.Go(func() error {
 		var stepErr error
-		laptop, stepErr = engine.Step(ctx, "provision_laptop", func() (string, error) {
-			fmt.Println("  💻 Provisioning laptop...")
-			time.Sleep(2 * time.Second)
-			return "MacBook Pro 16\" - Serial: MB12345", nil
-		})
+		laptop, stepErr = ProvisionLaptopStep(ctx)
 		return stepErr
 	})
 
 	var access string
 	g.Go(func() error {
 		var stepErr error
-		access, stepErr = engine.Step(ctx, "provision_access", func() (string, error) {
-			fmt.Println("  🔑 Provisioning system access...")
-			time.Sleep(2 * time.Second)
-			return "Access granted: Email, Slack, GitHub, AWS", nil
-		})
+		access, stepErr = ProvisionAccessStep(ctx)
 		return stepErr
 	})
 
@@ -60,11 +80,7 @@ func EmployeeOnboardingWorkflow(ctx *engine.Context) error {
 	fmt.Printf("  Laptop: %s\n", laptop)
 	fmt.Printf("  Access: %s\n\n", access)
 
-	emailResult, err := engine.Step(ctx, "send_welcome_email", func() (string, error) {
-		fmt.Println("  📧 Sending welcome email...")
-		time.Sleep(1 * time.Second)
-		return fmt.Sprintf("Welcome email sent to %s", employee.Email), nil
-	})
+	emailResult, err := SendWelcomeEmailStep(ctx, employee)
 	if err != nil {
 		return err
 	}

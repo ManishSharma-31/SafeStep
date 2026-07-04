@@ -8,12 +8,13 @@ import (
 
 	"durable-execution-engine/engine"
 	"durable-execution-engine/examples/onboarding"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
-	fmt.Println("╔═══════════════════════════════════════════╗")
-	fmt.Println("║   Durable Execution Engine - Demo         ║")
-	fmt.Println("╚═══════════════════════════════════════════╝")
+	fmt.Println("===========================================")
+	fmt.Println("  Durable Execution Engine - Demo")
+	fmt.Println("===========================================")
 	fmt.Println()
 
 	fmt.Println("Options:")
@@ -28,7 +29,6 @@ func main() {
 	input, _ := reader.ReadString('\n')
 	choice := strings.TrimSpace(input)
 
-	// Handle reset before initializing runner
 	if choice == "4" {
 		resetWorkflow()
 		return
@@ -64,19 +64,15 @@ func runNormally(runner *engine.WorkflowRunner, workflowID string) {
 }
 
 func runWithCrashAfterStep1(runner *engine.WorkflowRunner, workflowID string) {
-	fmt.Println("\n⚠️  Will simulate crash after Step 1")
+	fmt.Println("\nWill simulate crash after Step 1")
 	fmt.Println("Run the program again to see durability in action!")
 
 	wrapper := func(ctx *engine.Context) error {
-		_, err := engine.Step(ctx, "create_employee", func() (interface{}, error) {
-			fmt.Println("  📝 Creating employee record...")
-			return "Employee created", nil
-		})
-		if err != nil {
+		if _, err := onboarding.CreateEmployeeStep(ctx); err != nil {
 			return err
 		}
 
-		fmt.Println("\n💥 SIMULATED CRASH - Process terminated")
+		fmt.Println("\nSIMULATED CRASH - Process terminated")
 		os.Exit(0)
 		return nil
 	}
@@ -85,35 +81,28 @@ func runWithCrashAfterStep1(runner *engine.WorkflowRunner, workflowID string) {
 }
 
 func runWithCrashAfterParallel(runner *engine.WorkflowRunner, workflowID string) {
-	fmt.Println("\n⚠️  Will simulate crash after parallel steps")
+	fmt.Println("\nWill simulate crash after parallel steps")
 	fmt.Println("Run the program again to see durability in action!")
 
 	wrapper := func(ctx *engine.Context) error {
-		_, err := engine.Step(ctx, "create_employee", func() (interface{}, error) {
-			fmt.Println("  📝 Creating employee record...")
-			return "Employee created", nil
-		})
-		if err != nil {
+		if _, err := onboarding.CreateEmployeeStep(ctx); err != nil {
 			return err
 		}
 
-		_, err = engine.Step(ctx, "provision_laptop", func() (string, error) {
-			fmt.Println("  💻 Provisioning laptop...")
-			return "MacBook Pro 16\"", nil
+		g := new(errgroup.Group)
+		g.Go(func() error {
+			_, stepErr := onboarding.ProvisionLaptopStep(ctx)
+			return stepErr
 		})
-		if err != nil {
+		g.Go(func() error {
+			_, stepErr := onboarding.ProvisionAccessStep(ctx)
+			return stepErr
+		})
+		if err := g.Wait(); err != nil {
 			return err
 		}
 
-		_, err = engine.Step(ctx, "provision_access", func() (string, error) {
-			fmt.Println("  🔑 Provisioning system access...")
-			return "Access granted", nil
-		})
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("\n💥 SIMULATED CRASH - Process terminated")
+		fmt.Println("\nSIMULATED CRASH - Process terminated")
 		os.Exit(0)
 		return nil
 	}
@@ -124,14 +113,14 @@ func runWithCrashAfterParallel(runner *engine.WorkflowRunner, workflowID string)
 func resetWorkflow() {
 	dbPath := "./workflows.db"
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		fmt.Println("ℹ️  No workflow database found to reset.")
+		fmt.Println("No workflow database found to reset.")
 		return
 	}
 
 	if err := os.Remove(dbPath); err != nil {
-		fmt.Printf("❌ Failed to delete database: %v\n", err)
+		fmt.Printf("Failed to delete database: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✓ Workflow database reset successfully")
+	fmt.Println("Workflow database reset successfully")
 	fmt.Println("Run the program again to start fresh")
 }

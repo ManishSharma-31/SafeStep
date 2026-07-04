@@ -15,16 +15,16 @@ A native Go implementation of a durable execution engine that provides crash-res
 ## How It Works
 
 ### Sequence Tracking
-The engine uses an atomic counter to generate unique sequence IDs for each step invocation. This ensures that:
+The engine tracks invocation counts per step ID to generate deterministic sequence suffixes. This ensures that:
 - Steps in loops are uniquely identified
 - Conditional branches don't cause conflicts
-- Parallel steps maintain correct ordering
+- Parallel steps replay correctly even if goroutine scheduling differs across runs
 
 Step keys format: `<step_id>#<sequence_number>`
 
 ### Thread Safety
 Parallel execution is safe through:
-1. Atomic sequence counter (sync/atomic)
+1. Mutex-protected per-step sequence tracking
 2. Mutex-protected database operations
 3. Transaction-based state updates
 
@@ -92,7 +92,7 @@ durable-execution-engine/
 
 ## Key Implementation Notes
 
-1. **Atomic Sequence Counter**: Uses `sync/atomic.Int64` for thread-safe incrementing
+1. **Deterministic Step Sequencing**: Tracks invocation counts per step ID for replay-safe key generation
 2. **Mutex Protection**: Database operations are protected with `sync.Mutex`
 3. **Generic Step Function**: `Step[T any]()` supports any return type
 4. **JSON Serialization**: Standard library encoding/json for step results
