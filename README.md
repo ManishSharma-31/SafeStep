@@ -105,7 +105,7 @@ durable-execution-engine/
 ## 👤 Author
 
 **Manish Sharma**
-- GitHub: [@MrMKsharma](https://github.com/MrMKsharma)
+- GitHub: [manishsharma31](https://www.linkedin.com/in/manishsharma31/)
 - Email: manishsharmadota@gmail.com
 
 ---
